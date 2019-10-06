@@ -1,0 +1,20 @@
+language: go
+
+go_import_path: github.com/cvila84/sethosts
+
+env:
+  global:
+    - ARTIFACT_NAME=sethosts-windows-amd64.exe
+
+script:
+  - cd cmd/sethosts
+  - rsrc -manifest sethosts.manifest -o sethosts.syso
+  - GOOS=windows go build -o bin/$ARTIFACT_NAME
+
+deploy:
+  - provider: releases
+    api_key: $GITHUB_API_KEY
+    file: bin/$ARTIFACT_NAME
+    skip_cleanup: true # Important, otherwise the build output would be purged.
+    on:
+      tags: true # The deployment happens only if the commit has a tag.
