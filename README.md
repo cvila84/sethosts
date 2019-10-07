@@ -1,5 +1,5 @@
 # sethosts
-[![Build Status](https://api.travis-ci.com/cvila84/sethosts.svg?branch=master)](https://travis-ci.com/cvila84/sethosts)
+[![Build Status](https://travis-ci.com/cvila84/sethosts.svg?branch=master)](https://travis-ci.com/cvila84/sethosts)
 
 ## What is sethosts ?
 
