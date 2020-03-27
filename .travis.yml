@@ -11,7 +11,7 @@ env:
 
 script:
   - go get github.com/akavel/rsrc
-  - rsrc -manifest scripts/sethosts.manifest -o cmd/sethots/sethosts.syso
+  - rsrc -manifest scripts/sethosts.manifest -o cmd/sethosts/sethosts.syso
   - cd cmd/sethosts
   - GOOS=windows go build -o bin/$ARTIFACT_NAME
 
