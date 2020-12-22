@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"github.com/goodhosts/hostsfile"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 	"io"
@@ -27,11 +27,13 @@ var rootCmd = &cobra.Command{
 var dryRun bool
 var pause bool
 var verbose bool
+var merge bool
 
 func init() {
 	rootCmd.Flags().BoolVarP(&dryRun, "dry-run", "d", false, "Do not actually write the result to hosts file, just display it")
 	rootCmd.Flags().BoolVarP(&pause, "pause", "p", false, "Request user to type Enter to exit")
 	rootCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Log more information on console")
+	rootCmd.Flags().BoolVarP(&merge, "merge", "m", false, "Merge new entries with already existing ones in hosts file")
 }
 
 func rootRun(cmd *cobra.Command, args []string) {
@@ -65,45 +67,76 @@ func run(yamlEntries string) (rerr error) {
 	if len(entries) == 0 {
 		return nil
 	}
-	if dryRun {
-		for _, entry := range entries {
-			if len(entry.Ip) > 0 && len(entry.Hostname) > 0 {
-				fmt.Printf("%s\t%s\n", entry.Ip, entry.Hostname)
-			} else {
-				log.Printf("Ignored malformed YAML host entry IP: %s and HostName: %s\n", entry.Ip, entry.Hostname)
-			}
-		}
-	} else {
-		dir := path.Join(os.Getenv("SystemRoot"), "System32", "drivers", "etc")
-		hosts := path.Join(dir, "hosts")
-		hostsBak := path.Join(dir, "hosts.bak")
-		f1, err1 := os.Open(hosts)
-		if err1 != nil {
-			log.Println("Cannot open hosts file")
-			return err1
-		}
-		defer func() {
-			if err := f1.Close(); err != nil {
-				log.Println("Unexpected error")
-				rerr = err
-			}
-		}()
-		f2, err2 := os.Create(hostsBak)
-		if err2 != nil {
-			log.Println("Cannot create backup hosts file")
-			return err2
-		}
-		defer func() {
-			if err := f2.Close(); err != nil {
-				log.Println("Unexpected error")
-				rerr = err
-			}
-		}()
-		if _, err := io.Copy(f2, f1); err != nil {
-			log.Println("Cannot backup hosts file")
+	if !dryRun {
+		err := backupHosts()
+		if err != nil {
 			return err
 		}
-		f3, err3 := os.Create(hosts)
+	}
+	hosts, err := hostsfile.NewHosts()
+	if err != nil {
+		log.Println("Cannot read hosts file")
+		return err
+	}
+	for _, entry := range entries {
+		if len(entry.Ip) > 0 && len(entry.Hostname) > 0 {
+			err := hosts.Add(entry.Ip, entry.Hostname)
+			if err != nil {
+				log.Println("Malformed YAML host entry")
+				return err
+			}
+		} else {
+			log.Printf("Ignored malformed YAML host entry IP: %s and HostName: %s\n", entry.Ip, entry.Hostname)
+		}
+	}
+	hosts.Clean()
+	if verbose {
+		for _, line := range hosts.Lines {
+			log.Println(line.Raw)
+		}
+	}
+	if !dryRun {
+		err := hosts.Flush()
+		if err != nil {
+			log.Println("Cannot write hosts file")
+			return err
+		}
+	}
+	return nil
+}
+
+func backupHosts() (rerr error) {
+	dir := path.Join(os.Getenv("SystemRoot"), "System32", "drivers", "etc")
+	hostsFile := path.Join(dir, "hosts")
+	hostsBakFile := path.Join(dir, "hosts.bak")
+	f1, err1 := os.Open(hostsFile)
+	if err1 != nil {
+		log.Println("Cannot open hosts file")
+		return err1
+	}
+	defer func() {
+		if err := f1.Close(); err != nil {
+			log.Println("Unexpected error")
+			rerr = err
+		}
+	}()
+	f2, err2 := os.Create(hostsBakFile)
+	if err2 != nil {
+		log.Println("Cannot create backup hosts file")
+		return err2
+	}
+	defer func() {
+		if err := f2.Close(); err != nil {
+			log.Println("Unexpected error")
+			rerr = err
+		}
+	}()
+	if _, err := io.Copy(f2, f1); err != nil {
+		log.Println("Cannot backup hosts file")
+		return err
+	}
+	if !merge {
+		f3, err3 := os.Create(hostsFile)
 		if err3 != nil {
 			log.Println("Cannot create hosts file")
 			return err3
@@ -114,21 +147,6 @@ func run(yamlEntries string) (rerr error) {
 				rerr = err
 			}
 		}()
-		w := bufio.NewWriter(f3)
-		for _, entry := range entries {
-			if len(entry.Ip) > 0 && len(entry.Hostname) > 0 {
-				if _, err := fmt.Fprintf(w, "%s\t%s\n", entry.Ip, entry.Hostname); err != nil {
-					log.Println("Cannot write hosts file")
-					return err
-				}
-			} else {
-				log.Printf("Ignored malformed YAML host entry IP: %s and HostName: %s\n", entry.Ip, entry.Hostname)
-			}
-		}
-		if err := w.Flush(); err != nil {
-			log.Println("Cannot write hosts file")
-			return err
-		}
 	}
 	return nil
 }
